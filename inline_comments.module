@@ -1,0 +1,559 @@
+<?php
+/**
+ * @file
+ * This module adds interactivity to Text by adding response behaviours to
+ * mouse actions. Views is required on installing Inline comment module and
+ * Cluetip Plugin also essential one. Field in comment entity_type and two 
+ * table with respective fields automatically created on installing this 
+ * module.The Inline Comment respond to mouse actions such as select text and 
+ * mouseovers.
+ */
+
+/**
+ * Implements of hook_init().
+ */
+function inline_comments_init() {
+  global $user;
+  $nid = arg(1);
+  // Adding js & css files of the module.
+  drupal_add_js(drupal_get_path('module', 'inline_comments') . '/inline_comments.js');
+  drupal_add_css(drupal_get_path('module', 'inline_comments') . '/inline_comments.css',
+    array('group' => CSS_DEFAULT)
+  );
+  $library_path = 'sites/all/libraries';
+  // Adding jquery cluetip plugin js & css.
+  if (file_exists($_SERVER['DOCUMENT_ROOT'] . base_path() . $library_path . '/jquery-cluetip-master/jquery.cluetip.min.js')) {
+    drupal_add_js($library_path . '/jquery-cluetip-master/jquery.cluetip.min.js', 'file');
+    drupal_add_css($library_path . '/jquery-cluetip-master/jquery.cluetip.css', array('group' => CSS_DEFAULT));
+  }
+  else {
+    drupal_set_message('Jquery Cluetip plugin not found at the correct location. Inline Comment will not work', 'error');
+  }
+  // Fetch the inline_comment value from node_inline_comment table.
+  $querys = db_select('node_inline_comment', 'n');
+  $allow_inline_comments = $querys
+    ->fields('n', array('inline_comment'))
+    ->condition('n.nid', $nid)
+    ->execute();
+  $rows_value = array();
+  while ($rows = $allow_inline_comments->fetchAssoc()) {
+    $rows_value[] = $rows;
+  }
+  $allow_inline_comment = 1;
+  if (!empty($rows_value)) {
+    $allow_inline_comment = $rows_value[0]['inline_comment'];
+  }
+  // If inline comment value is available then pass data to jquery.
+  drupal_add_js(array('inline_comment' => array('allow_inline_comment' => $allow_inline_comment)), 'setting');
+  // Fetch the comment value from node table.
+  $query_node = db_select('node', 'n');
+  $allow_comments = $query_node
+    ->fields('n', array('comment'))
+    ->condition('n.nid', $nid)
+    ->execute();
+  $rows_values = array();
+  while ($row = $allow_comments->fetchAssoc()) {
+    $rows_values[] = $row;
+  }
+  $allow_comment = 2;
+  if (!empty($rows_values)) {
+    $allow_comment = $rows_values[0]['comment'];
+  }
+  // Pass the comment value to jquery.
+  $user_access = user_access('post comments', $user);
+  if ($user_access) {
+    drupal_add_js(array('inline_comment' => array('allow_comment' => $allow_comment)), 'setting');
+  }
+}
+
+/**
+ * Form builder function to create a new Inline Comment. It would be rendered.
+ * 
+ * @param array $form
+ *   $form is current form with values
+ * @param array $form_state
+ *   $form_state is current form states
+ * @param int $nid
+ *   $nid is current Inline Comment node-id
+ *    
+ * @return form
+ *   Create Inline Comment form
+ */
+function inline_comments_create_comments($form, &$form_state, $nid) {
+  $form['#attributes']['class'] = 'interactive-text-create-comments';
+  $form['comment_title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Comment Title'),
+    '#size' => '30',
+  );
+  $form['comment_description'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Comment Description'),
+    '#cols' => 30,
+    '#resizable' => TRUE,
+  );
+  $form['nid'] = array(
+    '#type' => 'hidden',
+    '#value' => $nid,
+  );
+  $form['text_selection_id'] = array(
+    '#type' => 'hidden',
+    '#default' => NULL,
+    '#maxlength' => '30',
+  );
+  $form['field_name'] = array(
+    '#type' => 'hidden',
+    '#id' => 'field_name',
+  );
+  $form['start_position'] = array(
+    '#type' => 'hidden',
+    '#id' => 'start_position',
+  );
+  $form['text_length'] = array(
+    '#type' => 'hidden',
+    '#id' => 'text_length',
+  );
+  $form['selected_text'] = array(
+    '#type' => 'hidden',
+    '#id' => 'selected_text',
+  );
+  $form['delta'] = array(
+    '#type' => 'hidden',
+    '#id' => 'delta',
+  );
+  $form['submit'] = array(
+    '#type' => 'button',
+    '#value' => t('Submit'),
+    '#ajax' => array(
+      'callback' => 'inline_comments_save_comments',
+      'wrapper' => 'node_wrapper',
+      'method' => 'replace',
+    ),
+  );
+  return $form;
+}
+
+/**
+ * AJAX callback for save comment and inline comment values.
+ * 
+ * @param array $form
+ *   $form is current form with values
+ * @param array $form_state
+ *   $form_state is current form states
+ *  
+ * @return html
+ *   the re-drawn current page with the new inline comment
+ */
+function inline_comments_save_comments($form, $form_state) {
+  global $user;
+  $nid = $form_state['values']['nid'];
+  $text_selection_id = $form_state['values']['text_selection_id'];
+  $field_name = $form_state['values']['field_name'];
+  $desc = $form_state['values']['comment_description'];
+  $title = $form_state['values']['comment_title'];
+  $selected_text = $form_state['values']['selected_text'];
+  $start_position = $form_state['values']['start_position'];
+  $text_length = $form_state['values']['text_length'];
+  $delta = $form_state['values']['delta'];
+  if ($text_selection_id == NULL) {
+    $text_selection_id = db_insert('inline_comments_text_selections')->fields(array(
+      'nid' => $nid,
+      'field_name' => $field_name,
+      'field_delta' => $delta,
+      'selected_text' => $selected_text,
+      'start_position' => $start_position,
+      'text_length' => $text_length,
+    ))->execute();
+  }
+  $user_name = $user->name;
+  // Set value to comment variable.
+  $comment = array(
+    'nid' => $nid,
+    'subject' => $title,
+    'comment_body' => array('und' => array(0 => array('value' => $desc))),
+    'field_text_selection_id' => array('und' => array(0 => array('value' => $text_selection_id))),
+    'name' => $user_name,
+    'uid' => $user->uid,
+    'cid' => NULL,
+    'pid' => NULL,
+    'language' => LANGUAGE_NONE,
+  );
+  // Converting to object and save the comment.
+  $comment = (object) $comment;
+  comment_save($comment);
+  $node = node_load($nid);
+  $output = node_view($node, 'full');
+  return render($output);
+}
+
+/**
+ * Implements of hook_form_FORM_ID_alter().
+ */
+function inline_comments_form_node_type_form_alter(&$form, $form_state, $form_id) {
+  if (isset($form['type'])) {
+    $form['comment']['comment']['#ajax'] = array(
+      'callback' => 'inline_comments_set_inline_comment',
+      'wrapper' => 'inline_comment_checkbox_wrapper',
+    );
+    $form['comment']['inline_comment'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Allow Inline Comment'),
+      '#default_value' => variable_get('inline_comment_' . $form['#node_type']->type, 1),
+      '#prefix' => '<div id="inline_comment_checkbox_wrapper">',
+      '#suffix' => '</div>',
+    );
+    if ($form['comment']['comment']['#default_value'] != 2) {
+      $form['comment']['inline_comment']['#attributes'] = array('disabled' => 'disabled');
+    }
+  }
+  return $form;
+}
+
+/**
+ * Ajax callback for disable inline comment if comment is closed or hidden.
+ * 
+ * @param array $form
+ *   $form is current form values.
+ * @param array $form_state
+ *   $form_state is current form states.
+ */
+function inline_comments_set_inline_comment($form, $form_state) {
+  if ($form_state['values']['comment'] != 2) {
+    $form['comment']['inline_comment']['#default_value'] = 0;
+    $form['comment']['inline_comment']['#attributes'] = array('disabled' => 'disabled');
+  }
+  else {
+    $form['comment']['inline_comment']['#attributes'] = NULL;
+  }
+  return $form['comment']['inline_comment'];
+}
+
+/**
+ * Implements of hook_node_prepare().
+ */
+function inline_comments_node_prepare($node) {
+  if (!isset($node->inline_comment)) {
+    $node->inline_comment = variable_get("inline_comment_" . $node->type, 1);
+  }
+}
+
+/**
+ * Implements of hook_form_BASE_FORM_ID_alter().
+ */
+function inline_comments_form_node_form_alter(&$form, $form_state, $form_id) {
+  $node = $form['#node'];
+  $form['comment_settings']['comment']['#ajax'] = array(
+    'callback' => 'inline_comments_set_checkbox_inline_comment',
+    'wrapper' => 'inline_comment_checkbox_wrapper',
+  );
+  $form['comment_settings']['inline_comment'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Allow Inline Comments'),
+    '#default_value' => $node->inline_comment,
+    '#prefix' => '<div id="inline_comment_checkbox_wrapper">',
+    '#suffix' => '</div>',
+  );
+  if ($node->comment != 2) {
+    $form['comment_settings']['inline_comment']['#attributes'] = array('disabled' => 'disabled');
+  }
+}
+
+/**
+ * Ajax callback for disable inline comment, if comment is closed or hidden.
+ * 
+ * @param array $form
+ *   $form is current form values.
+ * @param array $form_state
+ *   $form_state is current form states.
+ */
+function inline_comments_set_checkbox_inline_comment($form, $form_state) {
+  if ($form_state['values']['comment'] != 2) {
+    $form['comment_settings']['inline_comment']['#default_value'] = 0;
+    $form['comment_settings']['inline_comment']['#attributes'] = array('disabled' => 'disabled');
+  }
+  else {
+    $form['comment_settings']['inline_comment']['#attributes'] = NULL;
+  }
+  return $form['comment_settings']['inline_comment'];
+}
+
+/**
+ * Implements of hook_node_insert().
+ */
+function inline_comments_node_insert($node) {
+  db_insert('node_inline_comment')
+    ->fields(array(
+    'nid' => $node->nid,
+    'inline_comment' => $node->inline_comment,
+  ))
+  ->execute();
+}
+
+/**
+ * Update inline comment value in table.
+ * 
+ * @param array $node
+ *   $node is current node values.
+ */
+function inline_comments_node_update($node) {
+  $query_node = db_select('node_inline_comment', 'nic');
+  $node_inline_comment = $query_node
+    ->fields('nic', array('nid'))
+    ->condition('nic.nid', $node->nid)
+    ->execute();
+  $node_inline_comment = $node_inline_comment->fetchAssoc();
+  if ($node_inline_comment) {
+    db_update('node_inline_comment')
+      ->fields(array('inline_comment' => $node->inline_comment))
+      ->condition('nid', $node->nid)
+      ->execute();
+  }
+  else {
+    db_insert('node_inline_comment')
+      ->fields(array(
+      'nid' => $node->nid,
+      'inline_comment' => $node->inline_comment,
+    ))
+    ->execute();
+  }
+}
+
+/**
+ * Implements of hook_page_build().
+ */
+function inline_comments_page_build(&$page) {
+  if (isset($page['content']['system_main']['nodes'])) {
+    $nid = key($page['content']['system_main']['nodes']);
+    $form = drupal_get_form('inline_comments_create_comments', $nid);
+    $page['page_bottom']['inline'] = array(
+      '#weight' => 10,
+      '#markup' => '<div id="floating"><div class="close" title="close"></div>' . drupal_render($form) . '</div>',
+    );
+  }
+}
+
+/**
+ * Implements of hook_node_load().
+ */
+function inline_comments_node_load($nodes, $types) {
+  $result = db_query('SELECT nid, inline_comment FROM {node_inline_comment} WHERE nid IN(:nids)', array(':nids' => array_keys($nodes)));
+  foreach ($result as $record) {
+    $nodes[$record->nid]->inline_comment = $record->inline_comment;
+  }
+}
+
+
+/**
+ * Fetch Inline comment value from backend. return as array.
+ * 
+ * @param int $nid
+ *   $nid is current Inline Comment node-id
+ * @param string $field_name
+ *   $field_name is name of this field.
+ * @param int $comment
+ *   $comment is value of comment.
+ * @param int $field_delta
+ *   Index of the field in which the selection is made.
+ */
+function inline_comments_get_text_selections($nid, $field_name, $comment, $field_delta = 0) {
+  $result = db_select('inline_comments_text_selections', 'i');
+  $query = $result
+    ->fields('i', array('id', 'selected_text', 'start_position', 'text_length'))
+    ->condition('i.nid', $nid, '=')
+    ->condition('i.field_name', $field_name, '=')
+    ->condition('i.field_delta', $field_delta)
+    ->execute();
+  $rows = array();
+  while ($row = $query->fetchAssoc()) {
+    $rows[] = $row;
+  }
+  return $rows;
+}
+
+/**
+ * Implements of hook_field_attach_view_alter().
+ */
+function inline_comments_field_attach_view_alter(&$output, $context) {
+  if ($context['entity_type'] == 'node') {
+    $node = $context['entity'];
+    $nid = $node->nid;
+    $comment = $node->comment;
+    $inline_comment = 1;
+    if (isset($node->inline_comment)) {
+      $inline_comment = $node->inline_comment;
+    }
+    foreach ($output as $key => $value) {
+      if (strpos($key, '#') === FALSE) {
+        $field_name = $key;
+        if (($value['#field_type'] == 'text_long') || ($value['#field_type'] == 'text_with_summary') || ($value['#field_type'] == 'text')) {
+          $field = $output[$field_name];
+          foreach ($field as $field_key => $item) {
+            if (strpos($field_key, '#') === FALSE) {
+              $delta = $field_key;
+              $output[$field_name][$delta] = inline_comments_alter_field_item($nid, $field_name, $item, $delta, $comment, $inline_comment);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * This function do theming for selected inline comment.
+ * 
+ * @param int $nid
+ *   $nid is current Inline Comment node-id
+ * @param string $field_name
+ *   $field_name is name of this field.
+ * @param array $item
+ *   $item contains markup html content.
+ * @param int $delta
+ *   Index of the field in which the selection is made.
+ * @param int $comment
+ *   $comment is default value of comment.
+ */
+function inline_comments_alter_field_item($nid, $field_name, $item, $delta, $comment, $inline_comment) {
+  global $user;
+  $text_selections = inline_comments_get_text_selections($nid, $field_name, $comment, $delta);
+  if ($text_selections) {
+    $cluetip_content = '';
+    foreach ($text_selections as $text_selection) {
+      $add_comment = '';
+      $user_access = user_access('post comments', $user);
+      if ($user_access) {
+        if ($inline_comment == 1 && $comment == 2) {
+          $add_comment .= '<a id="new_inline_comment">Post a New Comment</a>';
+        }
+      }
+      $cluetip_content .= '<div id="cluetip-view-' . $text_selection['id'] . '" class="cluetip-view">' . views_embed_view('inline_comments_views', 'block_1', $text_selection['id']) . $add_comment . '</div>';
+      $span_open = '<span id="inline-comment-' . $text_selection['id'] . '" class="inline-comment" rel="#cluetip-view-' . $text_selection['id'] . '" title="">';
+      $span_close = '</span>';
+      $text_selection_text = $text_selection['selected_text'];
+      if ($comment == 0) {
+        $item['#markup'] = $item['#markup'];
+      }
+      else {
+        $start = $text_selection['start_position'];
+        $replacement = $span_open . $text_selection_text . $span_close;
+        $item['#markup'] = substr_replace($item['#markup'], $replacement, $start, $text_selection['text_length']) . $cluetip_content;
+      }
+    }
+  }
+  return $item;
+}
+
+/**
+ * The comment was built; the module may modify the structured content.
+ * 
+ * @param array $build
+ *   A renderable array representing the comment.
+ */
+function inline_comments_comment_view_alter(&$build) {
+  $comment = $build['#comment'];
+  $cid = $comment->cid;
+  if (isset($comment->field_text_selection_id) && count($comment->field_text_selection_id)) {
+    $build['#prefix'] = '<a id="comment-' . $cid . '" class="hidden-inline-comment"></a>';
+  }
+}
+
+/**
+ * Implements of hook_form_alter().
+ */
+function inline_comments_form_alter(&$form, &$form_state, $form_id) {
+  if ($form['#id'] == 'comment-form') {
+    $form['field_text_selection_id'][LANGUAGE_NONE][0]['value']['#type'] = 'hidden';
+  }
+}
+
+/**
+ * Implements of hook_view_api().
+ */
+function inline_comments_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'inline_comments'),
+  );
+}
+
+/**
+ * Implements of hook_views_default_views().
+ */
+function inline_comments_views_default_views() {
+  return inline_comments_list_all_nodes();
+}
+
+/**
+ * Create views programmatically for inline comments.
+ */
+function inline_comments_list_all_nodes() {
+  $view = new view();
+  $view->name = 'inline_comments_views';
+  $view->description = '';
+  $view->tag = 'default';
+  $view->base_table = 'comment';
+  $view->human_name = 'inline comment views';
+  $view->core = 7;
+  $view->api_version = '3.0';
+  $view->disabled = FALSE; /* Edit this to true to make a default view disabled initially */
+  /* Display: Master */
+  $handler = $view->new_display('default', 'Master', 'default');
+  $handler->display->display_options['title'] = 'inline comment views';
+  $handler->display->display_options['use_more_always'] = FALSE;
+  $handler->display->display_options['access']['type'] = 'perm';
+  $handler->display->display_options['cache']['type'] = 'none';
+  $handler->display->display_options['query']['type'] = 'views_query';
+  $handler->display->display_options['exposed_form']['type'] = 'basic';
+  $handler->display->display_options['pager']['type'] = 'full';
+  $handler->display->display_options['pager']['options']['items_per_page'] = '10';
+  $handler->display->display_options['style_plugin'] = 'default';
+  $handler->display->display_options['row_plugin'] = 'fields';
+  $handler->display->display_options['row_options']['inline'] = array(
+    'subject' => 'subject',
+    'comment_body' => 'comment_body',
+  );
+  /* Relationship: Comment: Content */
+  $handler->display->display_options['relationships']['nid']['id'] = 'nid';
+  $handler->display->display_options['relationships']['nid']['table'] = 'comment';
+  $handler->display->display_options['relationships']['nid']['field'] = 'nid';
+  $handler->display->display_options['relationships']['nid']['required'] = TRUE;
+  /* Field: Comment: Title */
+  $handler->display->display_options['fields']['subject']['id'] = 'subject';
+  $handler->display->display_options['fields']['subject']['table'] = 'comment';
+  $handler->display->display_options['fields']['subject']['field'] = 'subject';
+  $handler->display->display_options['fields']['subject']['label'] = '';
+  $handler->display->display_options['fields']['subject']['alter']['word_boundary'] = FALSE;
+  $handler->display->display_options['fields']['subject']['alter']['ellipsis'] = FALSE;
+  /* Field: Comment: Comment */
+  $handler->display->display_options['fields']['comment_body']['id'] = 'comment_body';
+  $handler->display->display_options['fields']['comment_body']['table'] = 'field_data_comment_body';
+  $handler->display->display_options['fields']['comment_body']['field'] = 'comment_body';
+  $handler->display->display_options['fields']['comment_body']['label'] = '';
+  $handler->display->display_options['fields']['comment_body']['element_label_colon'] = FALSE;
+  /* Field: Comment: Author */
+  $handler->display->display_options['fields']['name']['id'] = 'name';
+  $handler->display->display_options['fields']['name']['table'] = 'comment';
+  $handler->display->display_options['fields']['name']['field'] = 'name';
+  $handler->display->display_options['fields']['name']['label'] = '';
+  $handler->display->display_options['fields']['name']['element_label_colon'] = FALSE;
+  /* Sort criterion: Comment: Post date */
+  $handler->display->display_options['sorts']['created']['id'] = 'created';
+  $handler->display->display_options['sorts']['created']['table'] = 'comment';
+  $handler->display->display_options['sorts']['created']['field'] = 'created';
+  /* Contextual filter: Comment: text_selection_id (field_text_selection_id) */
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['id'] = 'field_text_selection_id_value';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['table'] = 'field_data_field_text_selection_id';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['field'] = 'field_text_selection_id_value';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['default_action'] = 'not found';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['default_argument_type'] = 'fixed';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['summary']['number_of_records'] = '0';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['summary']['format'] = 'default_summary';
+  $handler->display->display_options['arguments']['field_text_selection_id_value']['summary_options']['items_per_page'] = '25';
+  /* Display: Page */
+  $handler = $view->new_display('page', 'Page', 'page');
+  $handler->display->display_options['path'] = 'inline-comment-views';
+  /* Display: Block */
+  $handler = $view->new_display('block', 'Block', 'block_1');
+  $views[$view->name] = $view;
+  return $views;
+}
