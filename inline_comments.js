@@ -27,7 +27,7 @@
     if(allow_inline_comment == 1 && allow_comment == 2) {
       $('#content .field-item').click(function(e){
         //$('#add-inline-comment-image').empty();
-        if(!(comment_form_visible)) {          
+        if(!(comment_form_visible)) { 
           //get field name from parent div
           var ancestor = $(this).parents('.field:first');
           var ancestorClasses = $(ancestor).attr('class');
@@ -67,12 +67,11 @@
               //assign left and top postion for add image
               var left = coords.x - 10;
               var top = coords.y + scrollTop - 25;
-             
               // Remove image for old selection if not use for comment
               $('#add-inline-comment-image').empty();
               //Append add image at nearby selected text              
               $('#page-wrapper').after("<div id='add-inline-comment-image' class='add-inline-comment-image'><img title='Add a comment for selected text' src='../sites/all/modules/inline_comments/comment_add.png' style='position:absolute; left:" + left + "px; top:" + top + "px'/></div>");
-              
+           
               //Click handler on add image for showing form
               $('#add-inline-comment-image').click(function(e) {
                 var newcss = scrollTop + 100;
