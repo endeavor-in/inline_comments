@@ -1,0 +1,88 @@
+/**
+* inline comment form display
+*/
+#floating {
+  display: none;
+}
+
+.interactive-text-create-comments {
+  margin: 0;
+  width: 330px;
+}
+
+/**
+* cluetip form and new inline comment form close icon 
+*/
+.close,
+.cluetip-close,
+#cluetip-close {
+  background-image: url('close.png') !important;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  float: right;
+  height: 15px;
+  width: 15px;
+}
+
+.view-inline-comments-views div.views-row {
+  background: none repeat scroll 0 0 #ffffff;
+  border-bottom: solid 2px #aaa;
+  padding-bottom: 5px;
+}
+
+/**
+* cluetip content background color and set scrollbar
+*/
+.ui-cluetip-header,
+.ui-cluetip-content {
+  background: #fff;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.inline-comment {
+  color: #0071b3;
+}
+
+#new_inline_comment {
+  color: blue;
+  cursor: pointer;
+}
+
+#edit_comment {
+  color: #006599;
+  cursor: pointer;
+}
+
+.field-content a {
+  color: #0071b3;
+  cursor: pointer;
+}
+
+.hidden-inline-comment + .comment {
+  display: none;
+}
+
+#content #node_wrapper h2 {
+  display: none;
+}
+
+#node_wrapper .link-wrapper {
+  display: none;
+}
+
+.cluetip-view {
+  display: none;
+}
+
+.cluetip-close {
+  display: none;
+}
+
+.cluetip-default .ui-cluetip-header {
+  background-color: #aaaaaa !important;
+}
+
+.cluetip p {
+  margin: 0px;
+}

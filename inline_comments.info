@@ -1,0 +1,7 @@
+name = Inline Comments
+description = This module adds interactivity to text, by adding multiple response behaviours to mouse actions on those text
+core = 7.x
+package = Inline Comments
+
+dependencies[] = views
+dependencies[] = comment

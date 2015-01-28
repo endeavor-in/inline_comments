@@ -1,0 +1,127 @@
+<?php 
+/**
+ * @file
+ * Install and uninstall functions for the Inline Comment module.
+ */
+
+
+/**
+ * Implements hook_install().
+ */
+function inline_comments_install() {
+  // Creates all tables defined in a module's hook_schema().
+  if (!(db_table_exists('inline_comments_text_selections')) && !(db_table_exists('node_inline_comment'))) {
+    drupal_install_schema('inline_comments');
+  }
+  $field_text_selection_id = array(
+    'field_name' => 'field_text_selection_id',
+    'type' => 'text',
+    'entity_type' => 'comment',
+  );
+  // Create field for comment entity_type.
+  field_create_field($field_text_selection_id);
+  $node_types = array_keys(node_type_get_types());
+  foreach ($node_types as $node_type) {
+    $bundle_value = "comment_node_" . $node_type;
+    $instance_text_selection_id = array(
+      'label' => 'text_selection_id',
+      'field_name' => 'field_text_selection_id',
+      'entity_type' => 'comment',
+      'bundle' => $bundle_value,
+      'display' => array(
+        'default' => array(
+          'label' => 'above',
+          'settings' => array(),
+          'type' => 'hidden',
+        ),
+      ),
+    );
+    // Creates an instance of a field, binding it to a bundle.
+    field_create_instance($instance_text_selection_id);
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function inline_comments_uninstall() {
+  // Removes all tables defined in a module's hook_schema().
+  drupal_uninstall_schema('inline_comments');
+  // Marks a field and its instances and data for deletion.
+  field_delete_field('field_text_selection_id');
+  field_delete_instance('field_text_selection_id');
+}
+
+/**
+ * Implements hook_schema().
+ */
+function inline_comments_schema() {
+  $schema = array();
+  $schema['inline_comments_text_selections'] = array(
+    'description' => 'The base table for inline comments.',
+    'fields' => array(
+      'id' => array(
+        'description' => 'The primary identifier.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'description' => 'The current identifier for a node.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => NULL,
+      ),
+      'field_name' => array(
+        'description' => 'The name of this field.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'field_delta' => array(
+        'description' => 'Index of the field in which the selection is made.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'selected_text' => array(
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+      'start_position' => array(
+        'description' => 'Start position of the selected text',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => NULL,
+      ),
+      'text_length' => array(
+        'description' => 'Length of the selected text',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => NULL,
+      ),
+    ),
+    'primary key' => array('id'),
+  );
+  $schema['node_inline_comment'] = array(
+    'description' => 'The base table for inline comments.',
+    'fields' => array(
+      'nid' => array(
+        'description' => 'The current identifier for a node.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => NULL,
+      ),
+      'inline_comment' => array(
+        'description' => 'Whether inline comments are allowed on this node: 0 = no, 1 = yes.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+    ),
+  );
+  return $schema;
+}
